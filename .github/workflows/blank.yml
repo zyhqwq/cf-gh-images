@@ -1,0 +1,37 @@
+name: Update Image List
+
+on:
+  push:
+    paths:
+      - 'images/**'    # 只有当 images 文件夹内容变化时触发
+    branches: [ main ]
+
+jobs:
+  update-list:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Generate image list
+      run: |
+        # 进入 images 目录，获取所有文件名
+        cd images
+        # 使用 find 命令获取所有文件（排除目录本身），用逗号分隔
+        IMAGE_LIST=$(find . -type f -printf '%f,' | sed 's/,$//')
+        
+        # 创建 JSON 文件（回到根目录）
+        cd ..
+        echo "{\"images\": \"$IMAGE_LIST\"}" > image-list.json
+        
+        # 显示生成的内容（用于调试）
+        cat image-list.json
+      
+    - name: Commit and push if changed
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add image-list.json
+        git diff --staged --quiet || git commit -m "Auto-update image list"
+        git push
