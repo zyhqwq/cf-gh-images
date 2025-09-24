@@ -3,35 +3,40 @@ name: Update Image List
 on:
   push:
     paths:
-      - 'images/**'    # 只有当 images 文件夹内容变化时触发
-    branches: [ main ]
+      - 'images/**'    # 只有当 images 文件夹内的文件发生变更时触发
+
+# 关键配置：授予工作流写入仓库内容的权限
+permissions:
+  contents: write
 
 jobs:
   update-list:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Generate image list
-      run: |
-        # 进入 images 目录，获取所有文件名
-        cd images
-        # 使用 find 命令获取所有文件（排除目录本身），用逗号分隔
-        IMAGE_LIST=$(find . -type f -printf '%f,' | sed 's/,$//')
-        
-        # 创建 JSON 文件（回到根目录）
-        cd ..
-        echo "{\"images\": \"$IMAGE_LIST\"}" > image-list.json
-        
-        # 显示生成的内容（用于调试）
-        cat image-list.json
-      
-    - name: Commit and push if changed
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add image-list.json
-        git diff --staged --quiet || git commit -m "Auto-update image list"
-        git push
+      # 步骤1：检出仓库代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # 使用具有足够权限的token来检出代码，这对于后续推送更改很重要
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 步骤2：生成图片列表文件
+      - name: Generate image list
+        run: |
+          cd images
+          # 查找images目录下所有普通文件，输出文件名并用英文逗号分隔，最后移除行尾的逗号
+          IMAGE_LIST=$(find . -type f -printf '%f,' | sed 's/,$//')
+          cd ..
+          # 将图片列表写入JSON文件
+          echo "{\"images\": \"$IMAGE_LIST\"}" > image-list.json
+          # 显示生成的内容，便于调试
+          cat image-list.json
+
+      # 步骤3：提交并推送更改（如果生成了新的图片列表）
+      - name: Commit and push if changed
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add image-list.json
+          # 检查是否有待提交的更改，有则提交并推送
+          git diff --staged --quiet || (git commit -m "Auto-update image list" && git push)
