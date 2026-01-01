@@ -1,4 +1,4 @@
-name: Update Image List
+name: Update Image Lists
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  update-list:
+  update-lists:
     runs-on: ubuntu-latest
     steps:
       # 步骤1：检出仓库代码
@@ -20,23 +20,101 @@ jobs:
           # 使用具有足够权限的token来检出代码，这对于后续推送更改很重要
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 步骤2：生成图片列表文件
-      - name: Generate image list
+      # 步骤2：检查PC和SJ目录是否存在
+      - name: Check directories
+        id: check-dirs
         run: |
-          cd images
-          # 查找images目录下所有普通文件，输出文件名并用英文逗号分隔，最后移除行尾的逗号
-          IMAGE_LIST=$(find . -type f -printf '%f,' | sed 's/,$//')
-          cd ..
-          # 将图片列表写入JSON文件
-          echo "{\"images\": \"$IMAGE_LIST\"}" > image-list.json
-          # 显示生成的内容，便于调试
-          cat image-list.json
+          echo "检查目录结构..."
+          if [ -d "images/PC" ]; then
+            echo "PC目录存在"
+            echo "pc_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "PC目录不存在"
+            echo "pc_exists=false" >> $GITHUB_OUTPUT
+          fi
+          
+          if [ -d "images/SJ" ]; then
+            echo "SJ目录存在"
+            echo "sj_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "SJ目录不存在"
+            echo "sj_exists=false" >> $GITHUB_OUTPUT
+          fi
 
-      # 步骤3：提交并推送更改（如果生成了新的图片列表）
+      # 步骤3：生成PC图片列表文件
+      - name: Generate PC image list
+        if: steps.check-dirs.outputs.pc_exists == 'true'
+        run: |
+          echo "正在生成PC图片列表..."
+          cd images/PC
+          # 查找PC目录下所有普通文件，排除隐藏文件，输出文件名并用英文逗号分隔，最后移除行尾的逗号
+          if [ "$(ls -A .)" ]; then
+            # 使用find命令查找所有非隐藏的图片文件
+            IMAGE_LIST_PC=$(find . -maxdepth 1 -type f -not -name '.*' -printf '%f,' | sed 's/,$//')
+            cd ../..
+            # 将图片列表写入JSON文件
+            echo "{\"images\": \"$IMAGE_LIST_PC\"}" > image-list_PC.json
+            # 显示生成的内容，便于调试
+            echo "PC图片列表:"
+            cat image-list_PC.json
+            echo "PC图片数量: $(echo "$IMAGE_LIST_PC" | tr ',' '\n' | grep -c '^')"
+          else
+            cd ../..
+            echo "{\"images\": \"\"}" > image-list_PC.json
+            echo "PC目录为空"
+          fi
+
+      # 步骤4：生成SJ图片列表文件
+      - name: Generate SJ image list
+        if: steps.check-dirs.outputs.sj_exists == 'true'
+        run: |
+          echo "正在生成SJ图片列表..."
+          cd images/SJ
+          # 查找SJ目录下所有普通文件，排除隐藏文件，输出文件名并用英文逗号分隔，最后移除行尾的逗号
+          if [ "$(ls -A .)" ]; then
+            # 使用find命令查找所有非隐藏的图片文件
+            IMAGE_LIST_SJ=$(find . -maxdepth 1 -type f -not -name '.*' -printf '%f,' | sed 's/,$//')
+            cd ../..
+            # 将图片列表写入JSON文件
+            echo "{\"images\": \"$IMAGE_LIST_SJ\"}" > image-list_SJ.json
+            # 显示生成的内容，便于调试
+            echo "SJ图片列表:"
+            cat image-list_SJ.json
+            echo "SJ图片数量: $(echo "$IMAGE_LIST_SJ" | tr ',' '\n' | grep -c '^')"
+          else
+            cd ../..
+            echo "{\"images\": \"\"}" > image-list_SJ.json
+            echo "SJ目录为空"
+          fi
+
+      # 步骤5：如果目录不存在，创建空JSON文件
+      - name: Create empty JSON files for missing directories
+        run: |
+          if [ "${{ steps.check-dirs.outputs.pc_exists }}" != "true" ]; then
+            echo "{\"images\": \"\"}" > image-list_PC.json
+            echo "创建了空的PC图片列表文件"
+          fi
+          
+          if [ "${{ steps.check-dirs.outputs.sj_exists }}" != "true" ]; then
+            echo "{\"images\": \"\"}" > image-list_SJ.json
+            echo "创建了空的SJ图片列表文件"
+          fi
+
+      # 步骤6：提交并推送更改（如果生成了新的图片列表）
       - name: Commit and push if changed
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add image-list.json
+          
+          # 添加可能更改的文件
+          git add image-list_PC.json image-list_SJ.json
+          
           # 检查是否有待提交的更改，有则提交并推送
-          git diff --staged --quiet || (git commit -m "Auto-update image list" && git push)
+          if ! git diff --staged --quiet; then
+            echo "检测到文件变更，正在提交..."
+            git commit -m "Auto-update: PC and SJ image lists"
+            git push
+            echo "提交并推送完成"
+          else
+            echo "没有检测到文件变更，跳过提交"
+          fi
